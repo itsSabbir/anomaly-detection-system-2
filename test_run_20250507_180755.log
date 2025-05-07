@@ -1,0 +1,41 @@
+[18:07:55] [INFO] Starting Detailed Backend Pipeline Test: test_pipeline.sh
+[18:07:55] [INFO] Timestamp: 20250507_180755
+
+==============================================================================
+
+[18:07:55] [INFO] Phase 1: Verifying Prerequisites...
+[18:07:55] [INFO] Checking for test video file at 'backend/video.mp4'...
+[18:07:56] [SUCCESS] Test video file found.
+[18:07:56] [INFO] Checking backend server reachability at http://localhost:3001 ...
+[18:07:56] [SUCCESS] Backend server appears to be running.
+[18:07:56] [INFO] jq command not found. JSON output will be raw.
+
+==============================================================================
+
+[18:07:56] [INFO] Phase 2: Executing Video Upload via cURL...
+[18:07:56] [INFO] Target URL: http://localhost:3001/api/upload
+[18:07:56] [INFO] Video File: backend/video.mp4
+[18:07:56] [INFO] Saving response body to: test_response_body_20250507_180755.json
+[18:07:56] [INFO] Saving HTTP status code to: test_response_status_20250507_180755.txt
+[18:07:56] [INFO] Saving verbose cURL output to: test_curl_verbose_20250507_180755.log
+
+[18:08:12] [INFO] cURL command executed.
+
+==============================================================================
+
+[18:08:12] [INFO] Phase 3: Analyzing Results...
+
+[18:08:12] [INFO] HTTP Status Code Recorded: 200 (saved to test_response_status_20250507_180755.txt)
+[18:08:12] [SUCCESS] Test Passed: API responded with success status (200).
+
+[18:08:13] [INFO] Response Body (saved to test_response_body_20250507_180755.json):
+{"message":"Video processed successfully, no anomalies detected (or no JSON output)."}
+[18:08:13] [INFO] Interpretation: Status 200 suggests the video was processed successfully, but NO anomaly was detected according to the current rules OR the Python script output was invalid.
+[18:08:13] [INFO] -> Check the response body message above.
+[18:08:13] [INFO] -> Verify NO new frame image was saved in 'backend/frames/'.
+[18:08:13] [INFO] -> Verify NO new record was added to the 'alerts' table in RDS.
+[18:08:13] [INFO] For detailed processing steps and potential Python errors, check the backend server logs (e.g., 'backend_server.log' if you captured it).
+
+==============================================================================
+
+[18:08:13] [INFO] Detailed Test Script Finished.

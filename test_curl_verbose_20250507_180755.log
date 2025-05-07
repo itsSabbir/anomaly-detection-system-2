@@ -1,0 +1,25 @@
+*   Trying [::1]:3001...
+* Connected to localhost (::1) port 3001
+> POST /api/upload HTTP/1.1
+> Host: localhost:3001
+> User-Agent: curl/8.4.0
+> Accept: */*
+> Content-Length: 4105189
+> Content-Type: multipart/form-data; boundary=------------------------43tZmGO7O3692nBZtgl7aE
+> Expect: 100-continue
+> 
+< HTTP/1.1 100 Continue
+} [65536 bytes data]
+* We are completely uploaded and fine
+< HTTP/1.1 200 OK
+< X-Powered-By: Express
+< Access-Control-Allow-Origin: *
+< Content-Type: application/json; charset=utf-8
+< Content-Length: 86
+< ETag: W/"56-6ky8K06Af+WvHuqDqLsSvvoObV0"
+< Date: Wed, 07 May 2025 22:08:12 GMT
+< Connection: keep-alive
+< Keep-Alive: timeout=5
+< 
+{ [86 bytes data]
+* Connection #0 to host localhost left intact
