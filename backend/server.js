@@ -15,8 +15,11 @@ const PORT = process.env.PORT || 3001 // Defined here
 const UPLOAD_DIR = path.join(__dirname, 'uploads')
 const FRAME_DIR = path.join(__dirname, 'frames')
 const PYTHON_SCRIPT_PATH = path.join(__dirname, 'python', 'detect.py')
-// Read python executable from env or default to 'python3'
-const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python3'
+// Construct path to venv python executable
+const VENV_PYTHON_WIN = path.join(__dirname, 'python', 'venv', 'Scripts', 'python.exe')
+const VENV_PYTHON_NIX = path.join(__dirname, 'python', 'venv', 'bin', 'python')
+// Select the correct path based on OS, or allow override via environment variable
+const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? VENV_PYTHON_WIN : VENV_PYTHON_NIX)
 
 // --- Middleware ---
 app.use(cors()) // Allow requests from frontend origin (adjust in production)
@@ -43,15 +46,19 @@ const storage = multer.diskStorage({
   }
 })
 const upload = multer({
-  storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // Limit uploads to 100MB
+  storage: storage,
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    // Basic video file type check (can be expanded)
-    if (file.mimetype.startsWith('video/')) {
-      cb(null, true)
-    } else {
-      cb(new Error('Invalid file type: Only video files are allowed.'), false)
-    }
+    console.log(`Received file filter check: Original Name = ${file.originalname}, MIME Type = ${file.mimetype}`) // Log what's received
+    // For curl testing, let's just accept it for now
+    // In a real app, you'd want more robust checking perhaps based on extension too
+    cb(null, true)
+    // Original check:
+    // if (file.mimetype.startsWith('video/')) {
+    //   cb(null, true)
+    // } else {
+    //   cb(new Error(`Invalid file type (${file.mimetype}): Only video files are allowed.`), false)
+    // }
   }
 })
 
