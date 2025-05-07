@@ -1,0 +1,36 @@
+{
+    "root": true,
+    "env": {
+      "node": true,
+      "es2021": true,
+      "jest": true
+    },
+    "parserOptions": {
+      "ecmaVersion": 2021,
+      "sourceType": "commonjs"
+    },
+    "extends": [
+      "eslint:recommended",
+      "standard"
+    ],
+    "rules": {
+      "promise/always-return": "warn",
+      "promise/catch-or-return": [
+        "error",
+        {
+          "allowFinally": true
+        }
+      ]
+    },
+    "ignorePatterns": [
+      "node_modules/",
+      "dist/",
+      "build/",
+      "coverage/",
+      "*.log",
+      "uploads/",
+      "frames/",
+      "python/venv/",
+      "python/.venv/"
+    ]
+  }
