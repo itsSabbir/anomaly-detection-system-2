@@ -1,0 +1,13 @@
+# Backend specific ignores
+node_modules
+.env
+uploads/
+frames/
+coverage/
+*.log
+# Python specific
+python/__pycache__/
+python/*.pyc
+python/*.pyo
+python/venv/
+python/.venv/
