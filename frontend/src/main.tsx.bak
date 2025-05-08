@@ -1,0 +1,35 @@
+// frontend/src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx'; // Main application component
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline'; // Normalize browser styles
+import theme from './theme/theme.ts'; // Custom MUI theme
+
+/**
+ * Application's main entry point.
+ * Initializes React, applies the MUI theme, and renders the root App component.
+ */
+
+// Attempt to find the root DOM element for React rendering
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  // This is a critical failure; the app cannot render without the root element.
+  console.error("FATAL ERROR: Root DOM element with ID 'root' not found.");
+  // Optionally, display a user-friendly message in the DOM if possible
+  // document.body.innerHTML = '<div style="padding: 20px; text-align: center; font-family: sans-serif;"><h1>Application Error</h1><p>Could not initialize the application. The root HTML element is missing.</p></div>';
+  throw new Error("Root DOM element with ID 'root' not found. Check public/index.html.");
+}
+
+// Create the React root and render the application
+ReactDOM.createRoot(rootElement).render(
+  <React.StrictMode>
+    {/* ThemeProvider makes the theme available to all descendant MUI components */}
+    <ThemeProvider theme={theme}>
+      {/* CssBaseline applies a consistent baseline style across browsers */}
+      <CssBaseline />
+      {/* App is the root component of your application's UI */}
+      <App />
+    </ThemeProvider>
+  </React.StrictMode>
+);
