@@ -1,5 +1,5 @@
 // frontend/src/App.tsx
-import React from 'react'; // You can keep this or remove it as per suggestion, doesn't break functionality
+// import React from 'react'; // You can keep this or remove it as per suggestion, doesn't break functionality
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
