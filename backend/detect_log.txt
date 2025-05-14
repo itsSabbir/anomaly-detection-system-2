@@ -1,0 +1,4 @@
+2025-05-13 21:29:25 - DefinitiveAnomalyDetection - [INFO] - (detect.<module>:436) - --- Anomaly Detection Script Starting ---
+2025-05-13 21:29:25 - DefinitiveAnomalyDetection - [INFO] - (detect.<module>:437) - Invoked with resolved arguments: {'video_path': './sample_videos/test_video.mp4', 'frame_output_dir': 'python/local_test_output_frames', 'model': 'C:\\Users\\hossa\\OneDrive\\Documents\\GitHub\\anomaly-detection-system\\backend\\python\\yolov5s.pt', 'conf': 0.4, 'iou': 0.45, 'sample': 5, 'device': 'cpu', 'log_level': 'DEBUG'}
+2025-05-13 21:29:25 - DefinitiveAnomalyDetection - [INFO] - (detect.<module>:438) - Script directory (for relative model path): C:\Users\hossa\OneDrive\Documents\GitHub\anomaly-detection-system\backend\python
+2025-05-13 21:29:25 - DefinitiveAnomalyDetection - [ERROR] - (detect.<module>:447) - FATAL ERROR: Input video file not found or is not a regular file: 'sample_videos\test_video.mp4'

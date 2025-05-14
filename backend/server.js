@@ -1,4 +1,5 @@
 // backend/server.js
+console.log('### Top of server.js execution ###') // Strings to single quotes
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
@@ -8,134 +9,132 @@ const fs = require('fs').promises
 const { spawn } = require('child_process')
 const db = require('./db')
 
+console.log('### server.js __dirname is:', __dirname)
+
 const app = express()
-const PORT = process.env.PORT || 3001 // Defined here
+const PORT = process.env.PORT || 3001
 
 // --- Configuration ---
 const UPLOAD_DIR = path.join(__dirname, 'uploads')
 const FRAME_DIR = path.join(__dirname, 'frames')
 const PYTHON_SCRIPT_PATH = path.join(__dirname, 'python', 'detect.py')
-// Construct path to venv python executable
-const VENV_PYTHON_WIN = path.join(__dirname, 'python', 'venv', 'Scripts', 'python.exe')
-const VENV_PYTHON_NIX = path.join(__dirname, 'python', 'venv', 'bin', 'python')
-// Select the correct path based on OS, or allow override via environment variable
-const PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? VENV_PYTHON_WIN : VENV_PYTHON_NIX)
+// Default to using python from a venv inside backend/, otherwise fallback to env var or system 'python3'
+const VENV_PYTHON_PATH = path.join(__dirname, 'venv', 'bin', 'python') // Standard for Linux/macOS venv
+let PYTHON_EXECUTABLE = process.env.PYTHON_EXECUTABLE || 'python3' // Default to python3
+// Synchronous check for venv python, update if found.
+try {
+  fs.accessSync(VENV_PYTHON_PATH, fs.constants.X_OK) // Check if path exists and is executable
+  PYTHON_EXECUTABLE = VENV_PYTHON_PATH
+  console.log(`Python executable determined by venv path: ${PYTHON_EXECUTABLE}`)
+} catch (err) {
+  // VENV_PYTHON_PATH doesn't exist or isn't executable, stick with default or env var.
+  console.log(`Venv Python path (${VENV_PYTHON_PATH}) not found or not executable. Using: ${PYTHON_EXECUTABLE}`)
+}
 
 // --- Middleware ---
-app.use(cors()) // Allow requests from frontend origin (adjust in production)
-app.use(express.json()) // Parse JSON request bodies
-// Serve static frame files (allows accessing frames via URL like /frames/frame_123.jpg)
+app.use(cors()) // Consider more restrictive CORS for production
+app.use(express.json()) // For parsing application/json
+
+// --- Serve Static Frame Files ---
+console.log(`### Express static serving path for frames: ${FRAME_DIR}`)
 app.use('/frames', express.static(FRAME_DIR))
 
-// --- Multer Setup (File Upload Handling) ---
+// --- API Routes ---
+app.get('/api/status', (req, res) => {
+  console.log('### GET /api/status hit')
+  res.status(200).json({ message: 'Anomaly Detection Backend API is running!' })
+})
+
+// --- Multer Setup (Define before use in routes) ---
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
-      // Ensure upload directory exists before saving
       await fs.mkdir(UPLOAD_DIR, { recursive: true })
       cb(null, UPLOAD_DIR)
     } catch (err) {
-      console.error('Multer destination error:', err)
-      cb(err) // Pass error to multer
+      console.error('Multer destination setup error:', err)
+      cb(err) // Pass error to multer's error handling
     }
   },
   filename: (req, file, cb) => {
-    // Generate a unique filename to prevent overwrites
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, 'video-' + uniqueSuffix + path.extname(file.originalname))
+    cb(null, `video-${uniqueSuffix}${path.extname(file.originalname)}`)
   }
 })
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB limit
   fileFilter: (req, file, cb) => {
-    console.log(`Received file filter check: Original Name = ${file.originalname}, MIME Type = ${file.mimetype}`) // Log what's received
-    // For curl testing, let's just accept it for now
-    // In a real app, you'd want more robust checking perhaps based on extension too
-    cb(null, true)
-    // Original check:
-    // if (file.mimetype.startsWith('video/')) {
-    //   cb(null, true)
-    // } else {
-    //   cb(new Error(`Invalid file type (${file.mimetype}): Only video files are allowed.`), false)
-    // }
+    console.log(`File filter check for multer: Original Name = ${file.originalname}, MIME Type = ${file.mimetype}`)
+    if (file.mimetype.startsWith('video/')) {
+      cb(null, true) // Accept file
+    } else {
+      console.warn(`Rejected file due to invalid MIME type: ${file.mimetype}`)
+      cb(new Error('Invalid file type. Only video files are accepted.'), false) // Reject file
+    }
   }
 })
 
 // --- Helper Functions ---
-// Checks if the python script exists and is executable (basic check)
 async function ensurePythonScriptExists () {
   try {
-    await fs.access(PYTHON_SCRIPT_PATH, fs.constants.X_OK) // Check execute permission
+    await fs.access(PYTHON_SCRIPT_PATH)
     return true
   } catch (error) {
-    // If execute permission check fails (common on Windows or if not set), fall back to read check
-    try {
-      await fs.access(PYTHON_SCRIPT_PATH, fs.constants.R_OK)
-      // *** FIX: Use backticks for template literal ***
-      console.warn(`Python script at ${PYTHON_SCRIPT_PATH} is readable but maybe not executable.`)
-      return true // Allow proceeding if readable
-    } catch (readError) {
-      // *** FIX: Use backticks for template literal ***
-      console.error(`Python script not found or not readable at ${PYTHON_SCRIPT_PATH}`)
-      return false
-    }
+    console.error(`Python script check failed: Not found or not accessible at ${PYTHON_SCRIPT_PATH}. Error: ${error.message}`)
+    return false
   }
 }
 
-// Safely deletes a file, logging any errors
 async function cleanupFile (filePath) {
   try {
-    await fs.unlink(filePath)
-    // *** FIX: Use backticks for template literal ***
-    console.log(`Cleaned up file: ${filePath}`)
+    // Check if file exists before unlinking to prevent error if already deleted
+    if (filePath && await fs.access(filePath).then(() => true).catch(() => false)) {
+      await fs.unlink(filePath)
+      console.log(`Successfully cleaned up temporary file: ${filePath}`)
+    } else if (filePath) {
+      console.log(`File for cleanup not found (already deleted or never created): ${filePath}`)
+    }
   } catch (err) {
-    // Log error but don't crash server if cleanup fails
-    // *** FIX: Use backticks for template literal ***
-    console.error(`Failed to delete file ${filePath}: ${err.message}`)
+    console.error(`Error during cleanup of file ${filePath}: ${err.message}`)
   }
 }
 
 // --- Core API Route: Video Upload and Processing ---
 app.post('/api/upload', (req, res) => {
-  // Use multer middleware with custom error handling
   upload.single('video')(req, res, async (err) => {
-    // Handle Multer errors (e.g., file size limit, invalid file type)
     if (err instanceof multer.MulterError) {
-      console.error('Multer error:', err)
-      // *** FIX: Use backticks for template literal ***
+      console.error('Multer error during upload.single:', err)
       return res.status(400).json({ error: `File upload error: ${err.message}` })
     } else if (err) {
-      // Handle other potential errors during upload setup
-      console.error('Unknown upload error:', err)
-      return res.status(500).json({ error: 'An unexpected error occurred during upload.' })
+      console.error('Unknown error during multer processing in upload.single:', err)
+      return res.status(500).json({ error: 'An unexpected error occurred during upload initialization.' })
     }
 
-    // Proceed if upload middleware succeeded
     if (!req.file) {
+      console.warn('Attempted upload with no file attached.')
       return res.status(400).json({ error: 'No video file uploaded.' })
     }
 
     const videoPath = req.file.path
-    console.log(`Received video: ${videoPath}`) // This one was correct
+    console.log(`Received video for processing: ${videoPath} (Original: ${req.file.originalname})`)
 
     if (!await ensurePythonScriptExists()) {
       await cleanupFile(videoPath)
       return res.status(500).json({ error: 'Detection script not found or accessible on server.' })
     }
 
-    // Ensure frame directory exists before calling python
     try {
       await fs.mkdir(FRAME_DIR, { recursive: true })
     } catch (mkdirErr) {
-      console.error(`Failed to ensure frame directory ${FRAME_DIR}:`, mkdirErr) // This one was correct
+      console.error(`Failed to ensure frame directory ${FRAME_DIR} exists:`, mkdirErr)
       await cleanupFile(videoPath)
-      return res.status(500).json({ error: 'Could not prepare frame storage.' })
+      return res.status(500).json({ error: 'Could not prepare frame storage directory.' })
     }
 
-    // *** FIX: Use backticks for template literal *** (though these were likely correct already, good practice to ensure)
-    console.log(`Executing: ${PYTHON_EXECUTABLE} ${PYTHON_SCRIPT_PATH} ${videoPath} ${FRAME_DIR}`)
-    const pythonProcess = spawn(PYTHON_EXECUTABLE, [PYTHON_SCRIPT_PATH, videoPath, FRAME_DIR])
+    const pythonArgs = [PYTHON_SCRIPT_PATH, videoPath, FRAME_DIR]
+    console.log(`Executing Python script: ${PYTHON_EXECUTABLE} ${pythonArgs.join(' ')}`)
+    const pythonProcess = spawn(PYTHON_EXECUTABLE, pythonArgs)
 
     let scriptOutput = ''
     let errorOutput = ''
@@ -144,95 +143,113 @@ app.post('/api/upload', (req, res) => {
     pythonProcess.stderr.on('data', (data) => { errorOutput += data.toString() })
 
     pythonProcess.on('close', async (code) => {
-      // *** FIX: Use backticks for template literal *** (though this was likely correct already)
-      console.log(`Python script [${path.basename(videoPath)}] exited with code ${code}`)
-      // *** FIX: Use backticks for template literal *** (though this was likely correct already)
-      if (errorOutput) console.error(`Python stderr:\n${errorOutput}`)
-      // *** FIX: Use backticks for template literal *** (though this was likely correct already)
-      if (scriptOutput) console.log(`Python stdout:\n${scriptOutput}`)
+      const videoBasename = path.basename(videoPath)
+      console.log(`Python script [${videoBasename}] exited with code ${code}`)
+      if (errorOutput) console.error(`Python stderr [${videoBasename}]:\n${errorOutput}`)
+      if (scriptOutput) console.log(`Python stdout [${videoBasename}]:\n${scriptOutput}`)
 
-      // Always cleanup uploaded video
       await cleanupFile(videoPath)
 
       if (code !== 0) {
-        return res.status(500).json({ error: 'Video processing script failed.', details: errorOutput || 'Script exited with non-zero code but no stderr output.' })
+        return res.status(500).json({
+          error: 'Video processing script failed.',
+          details: errorOutput || `Script exited with non-zero code (${code}) but no specific stderr output.`
+        })
       }
 
-      // Process successful output
       try {
-        const lines = scriptOutput.split('\n')
-        // Find the first line that looks like a valid JSON object
+        const lines = scriptOutput.trim().split('\n')
         const jsonLine = lines.find(line => line.trim().startsWith('{') && line.trim().endsWith('}'))
 
         if (!jsonLine) {
-          console.log('No JSON alert data found in script output.')
-          // Send success even if no anomaly, script finished correctly
-          return res.status(200).json({ message: 'Video processed successfully, no anomalies detected (or no JSON output).' })
+          console.log(`No valid JSON alert data found in Python script output for [${videoBasename}].`)
+          return res.status(200).json({
+            message: 'Video processed successfully. No anomalies detected or reported by script.',
+            anomaly_detected: false
+          })
         }
 
         const alertData = JSON.parse(jsonLine)
-        console.log('Parsed alert data:', alertData)
+        console.log(`Parsed alert data from Python for [${videoBasename}]:`, alertData)
 
-        // Validate required fields before DB insert
-        if (alertData.alert_type && alertData.message && alertData.frame_filename) {
+        if (alertData.alert_type && alertData.message && alertData.frame_filename && alertData.details) {
           const frameKey = alertData.frame_filename
-          const detailsJson = alertData.details ? JSON.stringify(alertData.details) : null
+          const detailsJsonString = JSON.stringify(alertData.details)
           const insertQuery = 'INSERT INTO alerts (alert_type, message, frame_storage_key, details) VALUES ($1, $2, $3, $4) RETURNING id'
 
           try {
-            const dbResult = await db.query(insertQuery, [alertData.alert_type, alertData.message, frameKey, detailsJson])
-            // *** FIX: Use backticks for template literal ***
-            console.log(`Alert inserted with ID: ${dbResult.rows[0].id}`)
-            // Add frameUrl for potential frontend use
-            // *** FIX: Use backticks for template literal ***
-            alertData.frameUrl = `/frames/${frameKey}`
-            return res.status(201).json({ message: 'Anomaly detected and alert created!', alert: alertData })
+            const dbResult = await db.query(insertQuery, [alertData.alert_type, alertData.message, frameKey, detailsJsonString])
+            const insertedId = dbResult.rows[0].id
+            console.log(`Alert [ID: ${insertedId}] successfully inserted into database for [${videoBasename}].`)
+
+            const responseAlertData = { ...alertData, id: insertedId, frameUrl: `/frames/${frameKey}` }
+
+            return res.status(201).json({
+              message: 'Anomaly detected and alert created!',
+              anomaly_detected: true,
+              alert: responseAlertData
+            })
           } catch (dbError) {
-            console.error('Database insertion error:', dbError)
-            // Provide more specific feedback if possible (e.g., unique constraint violation)
-            if (dbError.code === '23505') { // Unique violation (e.g., frame_storage_key)
-              return res.status(409).json({ error: 'Database error: Duplicate frame key detected.', details: dbError.detail })
+            console.error(`Database insertion error for [${videoBasename}]:`, dbError)
+            if (dbError.code === '23505') {
+              return res.status(409).json({ error: 'Database error: This frame may have already been processed or a unique key conflict occurred.', details: dbError.detail })
             }
-            return res.status(500).json({ error: 'Database error while saving alert.' })
+            return res.status(500).json({ error: 'Database error while saving alert information.' })
           }
         } else {
-          console.warn('JSON output from script missing required fields (alert_type, message, frame_filename).')
-          return res.status(200).json({ message: 'Video processed, but output format was invalid.' })
+          console.warn(`JSON output from Python script for [${videoBasename}] was missing required fields (alert_type, message, frame_filename, details). Output: ${jsonLine}`)
+          return res.status(200).json({
+            message: 'Video processed, but the output format from the detection script was invalid or incomplete.',
+            anomaly_detected: false
+          })
         }
-      } catch (parseOrDbError) {
-        console.error('Failed to parse Python script output or save to DB:', parseOrDbError)
-        return res.status(500).json({ error: 'Failed to process detection results.', details: scriptOutput })
+      } catch (parseOrProcessingError) {
+        console.error(`Error parsing Python script output or processing results for [${videoBasename}]:`, parseOrProcessingError)
+        return res.status(500).json({ error: 'Failed to process detection results from script.', details: scriptOutput })
       }
-    }) // End of 'close' event handler
+    })
 
     pythonProcess.on('error', async (err) => {
-      console.error('Failed to start Python process:', err)
-      await cleanupFile(videoPath) // Attempt cleanup even if process didn't start
-      return res.status(500).json({ error: 'Failed to start video processing script.' })
-    }) // End of 'error' event handler
-  }) // End of multer middleware callback
-}) // End of POST /api/upload
-
-// --- Simple Root Route ---
-app.get('/', (req, res) => {
-  res.status(200).json({ message: 'Anomaly Detection Backend (Barebones) is running!' })
+      console.error(`Failed to start Python process for [${path.basename(videoPath)}]:`, err)
+      await cleanupFile(videoPath)
+      return res.status(500).json({ error: 'Internal server error: Failed to start video processing script.' })
+    })
+  })
 })
 
-// --- Error Handling Middleware (Keep these last) ---
-// 404 Handler
+// --- SERVE STATIC FRONTEND FILES ---
+const frontendDistPath = path.join(__dirname, '../frontend/dist')
+console.log(`### Attempting to serve static frontend from: ${frontendDistPath}`)
+app.use(express.static(frontendDistPath))
+
+// --- SPA FALLBACK (Client-Side Routing Support) ---
+const spaFallbackPath = path.join(frontendDistPath, 'index.html')
+console.log(`### SPA Fallback configured to serve: ${spaFallbackPath}`)
+app.get(/^(?!\/api|\/frames).*$/, (req, res, next) => {
+  console.log(`### SPA Fallback triggered for path: ${req.path}. Attempting to send index.html.`)
+  res.sendFile(spaFallbackPath, (err) => {
+    if (err) {
+      console.error(`### Error sending SPA fallback file (${spaFallbackPath}) for ${req.path}:`, err)
+      if (err.code === 'ENOENT') {
+        res.status(404).send('Frontend application not found on server.')
+      } else {
+        next(err)
+      }
+    }
+  })
+})
+
+// --- Error Handling Middleware (These should be LAST) ---
 app.use((req, res, next) => {
-  // *** FIX: Use backticks for template literal ***
-  res.status(404).json({ error: `Not Found - ${req.originalUrl}` })
+  console.log(`### Final 404 Handler reached for: ${req.originalUrl}`)
+  res.status(404).json({ error: `Not Found - The requested resource ${req.originalUrl} does not exist.` })
 })
 
-// General Error Handler
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('Unhandled Error:', err.stack || err.message || err)
-  // Avoid leaking stack trace in production
+  console.error('Unhandled Error Caught by Final General Handler:', err.stack || err.message || err)
   const errorResponse = { error: err.message || 'Internal Server Error' }
-  if (process.env.NODE_ENV === 'development') {
-    errorResponse.stack = err.stack
+  if (process.env.NODE_ENV !== 'production') { // Show stack only in dev
+    errorResponse.stack = err.stack // Corrected to only add stack if in non-production
   }
   res.status(err.status || 500).json(errorResponse)
 })
@@ -240,31 +257,27 @@ app.use((err, req, res, next) => {
 // --- Start Server Function ---
 async function startServer () {
   try {
-    // Ensure essential directories exist before starting
     await fs.mkdir(UPLOAD_DIR, { recursive: true })
     await fs.mkdir(FRAME_DIR, { recursive: true })
-    // *** FIX: Use backticks for template literals ***
-    console.log(`Upload directory: ${UPLOAD_DIR}`)
-    // *** FIX: Use backticks for template literals ***
-    console.log(`Frame directory: ${FRAME_DIR}`)
+    console.log(`Upload directory initialized: ${UPLOAD_DIR}`)
+    console.log(`Frame directory initialized: ${FRAME_DIR}`)
+    console.log(`Python executable set to: ${PYTHON_EXECUTABLE}`)
 
-    // Check DB connection before listening
     if (await db.checkConnection()) {
-      // *** FIX: Ensure app.listen uses PORT and has the correct callback structure ***
-      app.listen(PORT, () => { // Pass PORT to app.listen
-        // *** FIX: Use backticks for template literal ***
-        console.log(`Server listening on http://localhost:${PORT}`)
+      app.listen(PORT, () => {
+        console.log(`Server successfully started and listening on http://localhost:${PORT}`)
+        console.log(`To access externally (if deployed & firewall configured): http://<YOUR_EC2_PUBLIC_IP>:${PORT}`)
       })
     } else {
-      throw new Error('Database connection failed on startup.')
+      throw new Error('Database connection check failed. Server cannot start reliably.')
     }
   } catch (error) {
-    console.error('FATAL: Server failed to start.', error)
-    process.exit(1) // Exit if essential setup fails
+    console.error('FATAL: Server failed to start due to an unrecoverable error:', error)
+    process.exit(1)
   }
 }
 
-// --- Initiate Server Start ---
+// Initiate Server Start
 startServer()
 
-module.exports = app // Export for potential testing
+module.exports = app // Export 'app' for potential testing
